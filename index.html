@@ -84,7 +84,7 @@ const today = () => ymd(new Date());
 function defaults() {
   return {
     profile: { height: 156, age: 38, sex: 'f', goalWeight: 45, activity: 1.375, deficit: 500, kcalOverride: '', proteinOverride: '' },
-    settings: { provider: 'claude', apiKey: '', model: 'claude-sonnet-5', geminiKey: '', geminiModel: 'gemini-3.8-flash' },
+    settings: { provider: 'claude', apiKey: '', model: 'claude-sonnet-5', geminiKey: '', geminiModel: 'gemini-3.6-flash', gmv: 2 },
     weights: [{ d: today(), w: 65 }],
     meals: []
   };
@@ -92,7 +92,11 @@ function defaults() {
 function load() {
   try {
     const s = JSON.parse(localStorage.getItem(KEY));
-    if (s && s.profile) { const d = defaults(); return { ...d, ...s, profile: { ...d.profile, ...s.profile }, settings: { ...d.settings, ...s.settings } }; }
+    if (s && s.profile) {
+      const d = defaults(), r = { ...d, ...s, profile: { ...d.profile, ...s.profile }, settings: { ...d.settings, ...s.settings } };
+      if (!(s.settings && s.settings.gmv >= 2)) { r.settings.gmv = 2; r.settings.geminiModel = d.settings.geminiModel; }  // 舊預設(3.8/2.5)改為 3.6
+      return r;
+    }
   } catch (e) {}
   return defaults();
 }
@@ -202,7 +206,7 @@ async function callGemini(hint) {
     contents: [{ parts: [{ text: buildText(hint) }].concat(curImg ? [{ inline_data: { mime_type: 'image/jpeg', data: curImg.split(',')[1] } }] : []) }],
     generationConfig: { response_mime_type: 'application/json', maxOutputTokens: 4000 }
   });
-  const models = [S.settings.geminiModel, 'gemini-2.5-flash', 'gemini-2.5-flash-lite'].filter((m, i, arr) => arr.indexOf(m) === i);
+  const models = [S.settings.geminiModel, 'gemini-3.6-flash', 'gemini-3.8-flash', 'gemini-3.5-flash-lite'].filter((m, i, arr) => arr.indexOf(m) === i);
   const sleep = ms => new Promise(r => setTimeout(r, ms));
   const errList = [];
   for (let mi = 0; mi < models.length; mi++) {
@@ -416,7 +420,7 @@ function vSettings() {
     <label>使用哪家 AI</label><select id="provider" data-prov="1"><option value="claude" ${s.provider !== 'gemini' ? 'selected' : ''}>Claude（Anthropic，付費）</option><option value="gemini" ${s.provider === 'gemini' ? 'selected' : ''}>Gemini（Google，有免費額度）</option></select>
     ${s.provider === 'gemini' ? `
     <label>Gemini API 金鑰</label><input type="password" id="gkey" value="${esc(s.geminiKey)}" placeholder="AIza..." autocomplete="off">
-    <label>模型</label><select id="gmodel">${[['gemini-3.8-flash', '3.8 Flash（建議，有免費額度）'], ['gemini-3.6-flash', '3.6 Flash（有免費額度）'], ['gemini-2.5-flash', '2.5 Flash（有免費額度、較舊）'], ['gemini-3.1-pro-preview', '3.1 Pro 預覽版（最準，僅付費）']].map(([v, t]) => `<option value="${v}" ${s.geminiModel === v ? 'selected' : ''}>${t}</option>`).join('')}</select>
+    <label>模型</label><select id="gmodel">${[['gemini-3.6-flash', '3.6 Flash（建議，穩定、有免費額度）'], ['gemini-3.8-flash', '3.8 Flash（最新，人多時會忙碌）'], ['gemini-3.5-flash-lite', '3.5 Flash Lite（最快、較不準）'], ['gemini-3.1-pro-preview', '3.1 Pro 預覽版（最準，僅付費）']].map(([v, t]) => `<option value="${v}" ${s.geminiModel === v ? 'selected' : ''}>${t}</option>`).join('')}</select>
     <div class="sub" style="margin-top:8px">到 aistudio.google.com 用 Google 帳號登入，點「Get API key」建立金鑰。Google AI Plus／Pro 訂閱不含 API，但 AI Studio 有免費額度。<b>免費額度下，Google 可能會拿你送出的照片改善產品</b>；升級付費方案就不會。</div>` : `
     <label>Anthropic API 金鑰</label><input type="password" id="apikey" value="${esc(s.apiKey)}" placeholder="sk-ant-..." autocomplete="off">
     <label>模型</label><select id="model">${[['claude-sonnet-5', 'Sonnet 5（準，建議）'], ['claude-haiku-4-5-20251001', 'Haiku 4.5（便宜、快）'], ['claude-opus-5', 'Opus 5（最準、最貴）']].map(([v, t]) => `<option value="${v}" ${s.model === v ? 'selected' : ''}>${t}</option>`).join('')}</select>
