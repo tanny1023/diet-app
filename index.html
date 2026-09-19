@@ -165,13 +165,14 @@ const PROMPT = `你是專業營養師助理。請辨識照片中的食物與飲�
 {"items":[{"name":"食物名稱","portion":"份量描述，如 1碗/約150g","kcal":整數,"protein":蛋白質克數(可一位小數),"carbs":碳水克數,"fat":脂肪克數}],"confidence":"高|中|低","note":"一句話說明估算依據或不確定處"}
 - 若照片中沒有食物，items 為空陣列。`;
 
+function buildText(hint) {
+  return PROMPT + (curImg ? '' : '\n\n（這次沒有照片，請只根據使用者的文字描述估算；描述沒寫的份量請用常見份量並在 note 說明。）') + (hint ? '\n\n使用者補充說明：' + hint : '');
+}
 const hasKey = () => S.settings.provider === 'gemini' ? !!S.settings.geminiKey : !!S.settings.apiKey;
 
 async function callClaude(hint) {
-  const content = [
-    { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: curImg.split(',')[1] } },
-    { type: 'text', text: PROMPT + (hint ? '\n\n使用者補充說明：' + hint : '') }
-  ];
+  const content = [{ type: 'text', text: buildText(hint) }];
+  if (curImg) content.unshift({ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: curImg.split(',')[1] } });
   let r;
   try {
     r = await fetch('https://api.anthropic.com/v1/messages', {
@@ -197,10 +198,7 @@ async function callClaude(hint) {
 
 async function callGemini(hint) {
   const body = {
-    contents: [{ parts: [
-      { text: PROMPT + (hint ? '\n\n使用者補充說明：' + hint : '') },
-      { inline_data: { mime_type: 'image/jpeg', data: curImg.split(',')[1] } }
-    ] }],
+    contents: [{ parts: [{ text: buildText(hint) }].concat(curImg ? [{ inline_data: { mime_type: 'image/jpeg', data: curImg.split(',')[1] } }] : []) }],
     generationConfig: { response_mime_type: 'application/json', maxOutputTokens: 4000 }
   };
   let r;
@@ -225,7 +223,8 @@ async function callGemini(hint) {
 }
 
 async function analyze(hint) {
-  if (!hasKey()) throw new Error('尚未設定 API 金鑰，請到「設定」貼上金鑰；或改用手動輸入。');
+  if (!hasKey()) throw new Error('尚未設定 API 金鑰，請到「設定」貼上金鑰；或直接手動填下面的數字。');
+  if (!curImg && !(hint || '').trim()) throw new Error('沒有照片時，請先在上方寫下你吃了什麼（例：滷肉飯一碗、滷蛋一顆、燙青菜），再按「估算」。');
   const text = S.settings.provider === 'gemini' ? await callGemini(hint) : await callClaude(hint);
   const m = text.match(/\{[\s\S]*\}/);
   if (!m) throw new Error('無法解析 AI 回覆，請再試一次。');
@@ -281,7 +280,10 @@ function vAdd() {
       <label>補充說明（選填，拍照前先寫，可讓估算更準）</label>
       <input id="hint0" placeholder="例：飯只吃半碗、飲料無糖、雞腿去皮">
     </div>
-    <button class="full sec" data-act="manual">✍️ 手動輸入（不用照片）</button>`;
+    <div class="card"><h2>✍️ 沒有照片？用文字描述</h2>
+      <textarea id="hintText" rows="3" placeholder="例：一碗滷肉飯、一顆滷蛋、一杯半糖珍珠奶茶（700ml）"></textarea>
+      <button class="full" style="margin-top:8px" data-act="textest">用文字讓 AI 估算</button></div>
+    <button class="full sec" data-act="manual">全部自己填數字（不用 AI）</button>`;
   }
   const c = calc();
   const tot = sums([draft]);
@@ -289,8 +291,10 @@ function vAdd() {
   ${draft.thumb ? `<img class="preview" src="${curImg || draft.thumb}" alt="">` : ''}
   ${errMsg ? `<div class="err">${esc(errMsg)}</div>` : ''}
   ${noteMsg ? `<div class="note">${noteMsg}</div>` : ''}
-  ${curImg ? `<div class="card"><label style="margin-top:0">補充說明後重新估算</label>
-      <div class="row"><input id="hint1" value="${esc(draft.hint || '')}" placeholder="例：飯是半碗、沒喝湯"><button data-act="reanalyze" ${busy ? 'disabled' : ''}>${busy ? '<span class="spin"></span>' : ''}重估</button></div></div>` : ''}
+  <div class="card"><label style="margin-top:0">${curImg ? '補充說明後重新估算' : '文字描述，讓 AI 幫你估算'}</label>
+    <textarea data-f="hint" id="hint1" rows="2" placeholder="例：滷肉飯一碗（約200g）、滷蛋一顆、燙青菜，飲料無糖綠茶">${esc(draft.hint || '')}</textarea>
+    <button class="full" style="margin-top:8px" data-act="reanalyze" ${busy ? 'disabled' : ''}>${busy ? '<span class="spin"></span>' : ''}${curImg ? '依說明重新估算' : 'AI 估算熱量與蛋白質'}</button>
+    <div class="sub" style="margin-top:6px">寫得越具體越準：份量（幾碗、幾克、幾片）、烹調方式（炸、滷、清蒸）、有沒有加糖／醬料。</div></div>
   <div class="card"><h2>食物明細 <span class="sub">（數字可直接修改）</span></h2>
     <div id="items">${draft.items.map(itemRow).join('')}</div>
     <button class="sec full" data-act="additem">＋ 新增一項</button>
@@ -459,6 +463,11 @@ document.addEventListener('click', async e => {
   if (a === 'newmeal') { draft = null; curImg = null; view = 'add'; return render(); }
   if (a === 'cam') { window._hint = ($('#hint0') || {}).value || ''; return $('#fCam').click(); }
   if (a === 'gal') { window._hint = ($('#hint0') || {}).value || ''; return $('#fGal').click(); }
+  if (a === 'textest') {
+    const t = ($('#hintText').value || '').trim();
+    if (!t) return alert('請先寫下你吃了什麼');
+    draft = newDraft(viewDate); draft.hint = t; curImg = null; draft.items = []; view = 'add'; return runAnalyze();
+  }
   if (a === 'manual') { draft = newDraft(viewDate); draft.items = [blankItem()]; curImg = null; return render(); }
   if (a === 'editmeal') { const m = S.meals.find(x => x.id === el.dataset.id); if (!m) return; draft = JSON.parse(JSON.stringify(m)); curImg = null; view = 'add'; return render(); }
   if (a === 'additem') { draft.items.push(blankItem()); return render(); }
