@@ -84,7 +84,7 @@ const today = () => ymd(new Date());
 function defaults() {
   return {
     profile: { height: 156, age: 38, sex: 'f', goalWeight: 45, activity: 1.375, deficit: 500, kcalOverride: '', proteinOverride: '' },
-    settings: { apiKey: '', model: 'claude-sonnet-5' },
+    settings: { provider: 'claude', apiKey: '', model: 'claude-sonnet-5', geminiKey: '', geminiModel: 'gemini-3.8-flash' },
     weights: [{ d: today(), w: 65 }],
     meals: []
   };
@@ -165,8 +165,9 @@ const PROMPT = `你是專業營養師助理。請辨識照片中的食物與飲�
 {"items":[{"name":"食物名稱","portion":"份量描述，如 1碗/約150g","kcal":整數,"protein":蛋白質克數(可一位小數),"carbs":碳水克數,"fat":脂肪克數}],"confidence":"高|中|低","note":"一句話說明估算依據或不確定處"}
 - 若照片中沒有食物，items 為空陣列。`;
 
-async function analyze(hint) {
-  if (!S.settings.apiKey) throw new Error('尚未設定 API 金鑰，請到「設定」貼上金鑰；或改用手動輸入。');
+const hasKey = () => S.settings.provider === 'gemini' ? !!S.settings.geminiKey : !!S.settings.apiKey;
+
+async function callClaude(hint) {
   const content = [
     { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: curImg.split(',')[1] } },
     { type: 'text', text: PROMPT + (hint ? '\n\n使用者補充說明：' + hint : '') }
@@ -191,7 +192,41 @@ async function analyze(hint) {
     if (r.status === 429) throw new Error('請求太頻繁或額度用完：' + m);
     throw new Error('辨識失敗：' + m);
   }
-  const text = (data.content || []).filter(b => b.type === 'text').map(b => b.text).join('');
+  return (data.content || []).filter(b => b.type === 'text').map(b => b.text).join('');
+}
+
+async function callGemini(hint) {
+  const body = {
+    contents: [{ parts: [
+      { text: PROMPT + (hint ? '\n\n使用者補充說明：' + hint : '') },
+      { inline_data: { mime_type: 'image/jpeg', data: curImg.split(',')[1] } }
+    ] }],
+    generationConfig: { response_mime_type: 'application/json', maxOutputTokens: 4000 }
+  };
+  let r;
+  try {
+    r = await fetch('https://generativelanguage.googleapis.com/v1beta/models/' + encodeURIComponent(S.settings.geminiModel) + ':generateContent', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-goog-api-key': S.settings.geminiKey.trim() },
+      body: JSON.stringify(body)
+    });
+  } catch (e) { throw new Error('連不上網路，請檢查網路後再試。'); }
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) {
+    const m = (data.error && data.error.message) || ('HTTP ' + r.status);
+    if (r.status === 429) throw new Error('免費額度用完或太頻繁，稍後再試：' + m);
+    if (r.status === 400 && /api key/i.test(m)) throw new Error('Gemini 金鑰無效，請到「設定」重新貼上。');
+    if (r.status === 403) throw new Error('金鑰沒有權限或此模型不開放：' + m);
+    throw new Error('辨識失敗：' + m);
+  }
+  const cand = (data.candidates || [])[0];
+  if (!cand) throw new Error('Gemini 沒有回覆' + (data.promptFeedback && data.promptFeedback.blockReason ? '（' + data.promptFeedback.blockReason + '）' : '') + '，請換張照片或再試一次。');
+  return ((cand.content && cand.content.parts) || []).filter(p => p.text && !p.thought).map(p => p.text).join('');
+}
+
+async function analyze(hint) {
+  if (!hasKey()) throw new Error('尚未設定 API 金鑰，請到「設定」貼上金鑰；或改用手動輸入。');
+  const text = S.settings.provider === 'gemini' ? await callGemini(hint) : await callClaude(hint);
   const m = text.match(/\{[\s\S]*\}/);
   if (!m) throw new Error('無法解析 AI 回覆，請再試一次。');
   let j; try { j = JSON.parse(m[0]); } catch (e) { throw new Error('無法解析 AI 回覆，請再試一次。'); }
@@ -239,7 +274,7 @@ function mealRow(m) {
 function vAdd() {
   if (!draft) {
     return `<h1>記錄一餐</h1>
-    ${S.settings.apiKey ? '' : `<div class="note">還沒設定 AI 金鑰，拍照無法自動辨識。請先到「設定」貼上金鑰；或用「手動輸入」。</div>`}
+    ${hasKey() ? '' : `<div class="note">還沒設定 AI 金鑰，拍照無法自動辨識。請先到「設定」貼上金鑰；或用「手動輸入」。</div>`}
     <div class="card">
       <button class="full" data-act="cam">📷 拍照</button>
       <button class="full sec" style="margin-top:10px" data-act="gal">🖼️ 從相簿選照片</button>
@@ -364,9 +399,15 @@ function vSettings() {
     <div><label>自訂蛋白質（留空＝自動 ${c.protein}）</label><input type="number" data-p="proteinOverride" value="${esc(p.proteinOverride)}"></div></div>
   </div>
   <div class="card"><h2>AI 辨識設定</h2>
+    <label>使用哪家 AI</label><select id="provider" data-prov="1"><option value="claude" ${s.provider !== 'gemini' ? 'selected' : ''}>Claude（Anthropic，付費）</option><option value="gemini" ${s.provider === 'gemini' ? 'selected' : ''}>Gemini（Google，有免費額度）</option></select>
+    ${s.provider === 'gemini' ? `
+    <label>Gemini API 金鑰</label><input type="password" id="gkey" value="${esc(s.geminiKey)}" placeholder="AIza..." autocomplete="off">
+    <label>模型</label><select id="gmodel">${[['gemini-3.8-flash', '3.8 Flash（建議，有免費額度）'], ['gemini-3.6-flash', '3.6 Flash（有免費額度）'], ['gemini-2.5-flash', '2.5 Flash（有免費額度、較舊）'], ['gemini-3.1-pro-preview', '3.1 Pro 預覽版（最準，僅付費）']].map(([v, t]) => `<option value="${v}" ${s.geminiModel === v ? 'selected' : ''}>${t}</option>`).join('')}</select>
+    <div class="sub" style="margin-top:8px">到 aistudio.google.com 用 Google 帳號登入，點「Get API key」建立金鑰。Google AI Plus／Pro 訂閱不含 API，但 AI Studio 有免費額度。<b>免費額度下，Google 可能會拿你送出的照片改善產品</b>；升級付費方案就不會。</div>` : `
     <label>Anthropic API 金鑰</label><input type="password" id="apikey" value="${esc(s.apiKey)}" placeholder="sk-ant-..." autocomplete="off">
     <label>模型</label><select id="model">${[['claude-sonnet-5', 'Sonnet 5（準，建議）'], ['claude-haiku-4-5-20251001', 'Haiku 4.5（便宜、快）'], ['claude-opus-5', 'Opus 5（最準、最貴）']].map(([v, t]) => `<option value="${v}" ${s.model === v ? 'selected' : ''}>${t}</option>`).join('')}</select>
-    <div class="sub" style="margin-top:8px">金鑰只存在這支手機的瀏覽器裡，不會上傳到別處；拍的照片只會在你按辨識時，直接傳給 Anthropic 分析。到 console.anthropic.com 建立金鑰並儲值，一張照片的費用約幾毛錢到一兩塊台幣。</div>
+    <div class="sub" style="margin-top:8px">到 console.anthropic.com 建立金鑰並儲值，一張照片的費用約幾毛到一兩塊台幣。</div>`}
+    <div class="sub" style="margin-top:8px">金鑰只存在這支手機的瀏覽器裡；拍的照片只會在你按辨識時，直接傳給你選的那家 AI 分析。</div>
     <button class="full" style="margin-top:10px" data-act="savekey">儲存金鑰與模型</button>
   </div>
   <div class="card"><h2>資料備份</h2>
@@ -440,7 +481,7 @@ document.addEventListener('click', async e => {
     S.weights = S.weights.filter(x => x.d !== d); S.weights.push({ d, w }); save(); return render();
   }
   if (a === 'delw') { if (S.weights.length <= 1) return alert('至少要保留一筆體重紀錄'); S.weights = S.weights.filter(x => x.d !== el.dataset.d); save(); return render(); }
-  if (a === 'savekey') { S.settings.apiKey = $('#apikey').value.trim(); S.settings.model = $('#model').value; save(); el.textContent = '已儲存 ✓'; return setTimeout(() => el.textContent = '儲存金鑰與模型', 1500); }
+  if (a === 'savekey') { if (S.settings.provider === 'gemini') { S.settings.geminiKey = $('#gkey').value.trim(); S.settings.geminiModel = $('#gmodel').value; } else { S.settings.apiKey = $('#apikey').value.trim(); S.settings.model = $('#model').value; } save(); el.textContent = '已儲存 ✓'; return setTimeout(() => el.textContent = '儲存金鑰與模型', 1500); }
   if (a === 'export') {
     const blob = new Blob([JSON.stringify(S)], { type: 'application/json' }), u = URL.createObjectURL(blob), l = document.createElement('a');
     l.href = u; l.download = 'diet-backup-' + today() + '.json'; l.click(); return setTimeout(() => URL.revokeObjectURL(u), 2000);
@@ -458,7 +499,7 @@ document.addEventListener('input', e => {
     const k = t.dataset.p; S.profile[k] = (k === 'sex' || k === 'kcalOverride' || k === 'proteinOverride') ? t.value : num(t.value); save();
   } else if (t.dataset.f && draft) { draft[t.dataset.f] = t.value; }
 });
-document.addEventListener('change', e => { if (e.target.dataset.p) { const y = window.scrollY; render(); window.scrollTo(0, y); } });
+document.addEventListener('change', e => { if (e.target.dataset.prov) { S.settings.provider = e.target.value; save(); const y = window.scrollY; render(); window.scrollTo(0, y); } else if (e.target.dataset.p) { const y = window.scrollY; render(); window.scrollTo(0, y); } });
 $('#fCam').addEventListener('change', e => { const f = e.target.files[0]; e.target.value = ''; handlePhoto(f, window._hint); });
 $('#fGal').addEventListener('change', e => { const f = e.target.files[0]; e.target.value = ''; handlePhoto(f, window._hint); });
 $('#fImp').addEventListener('change', async e => {
