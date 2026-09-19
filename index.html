@@ -232,7 +232,7 @@ async function callGemini(hint) {
       break;                                                                       // 其他錯誤：換下一個模型
     }
   }
-  throw new Error('辨識失敗（已自動重試並換備用模型）。' + errList.join('；').slice(0, 300));
+  throw new Error('辨識失敗（已自動重試並換備用模型）。' + errList.join('；').slice(0, 1500));
 }
 
 async function analyze(hint) {
@@ -303,7 +303,7 @@ function vAdd() {
   const tot = sums([draft]);
   return `<h1>${draft.id && S.meals.some(m => m.id === draft.id) ? '編輯餐點' : '確認這一餐'}</h1>
   ${draft.thumb ? `<img class="preview" src="${curImg || draft.thumb}" alt="">` : ''}
-  ${errMsg ? `<div class="err">${esc(errMsg)}</div>` : ''}
+  ${errMsg ? `<div class="err">${esc(errMsg)}<div style="margin-top:8px"><button class="sec" style="background:#fff;padding:7px 14px" data-act="copyerr">📋 複製錯誤訊息</button></div></div>` : ''}
   ${noteMsg ? `<div class="note">${noteMsg}</div>` : ''}
   <div class="card"><label style="margin-top:0">${curImg ? '補充說明後重新估算' : '文字描述，讓 AI 幫你估算'}</label>
     <textarea data-f="hint" id="hint1" rows="2" placeholder="例：滷肉飯一碗（約200g）、滷蛋一顆、燙青菜，飲料無糖綠茶">${esc(draft.hint || '')}</textarea>
@@ -487,6 +487,15 @@ document.addEventListener('click', async e => {
   if (a === 'editmeal') { const m = S.meals.find(x => x.id === el.dataset.id); if (!m) return; draft = JSON.parse(JSON.stringify(m)); curImg = null; view = 'add'; return render(); }
   if (a === 'additem') { draft.items.push(blankItem()); return render(); }
   if (a === 'delitem') { draft.items.splice(+el.dataset.k, 1); return render(); }
+  if (a === 'copyerr') {
+    const info = '瘦身日記錯誤｜' + (S.settings.provider === 'gemini' ? 'Gemini ' + S.settings.geminiModel : 'Claude ' + S.settings.model) + '｜' + new Date().toLocaleString('zh-TW') + '｜' + (curImg ? '有照片' : '純文字') + '\n' + errMsg;
+    let ok = false;
+    try { await navigator.clipboard.writeText(info); ok = true; } catch (x) {
+      try { const ta = document.createElement('textarea'); ta.value = info; ta.style.position = 'fixed'; ta.style.opacity = '0'; document.body.appendChild(ta); ta.focus(); ta.select(); ok = document.execCommand('copy'); ta.remove(); } catch (y) {}
+    }
+    el.textContent = ok ? '已複製 ✓ 可以貼給我了' : '複製失敗，請長按上面的文字手動複製';
+    return setTimeout(() => { if (el.isConnected) el.textContent = '📋 複製錯誤訊息'; }, 2500);
+  }
   if (a === 'cancel') return goto('today');
   if (a === 'reanalyze') { draft.hint = $('#hint1').value.trim(); return runAnalyze(); }
   if (a === 'savemeal') {
