@@ -1,0 +1,473 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#2f9e6f">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<title>瘦身日記</title>
+<style>
+:root{--bg:#f4f7f5;--card:#fff;--ink:#1f2a25;--sub:#6b7a73;--line:#e2e9e5;--main:#2f9e6f;--main-d:#237a55;--warn:#d9822b;--bad:#d64545;--pro:#3b82c4;}
+@media (prefers-color-scheme:dark){:root{--bg:#121816;--card:#1b2320;--ink:#e8efeb;--sub:#93a39b;--line:#2b3631;--main:#3fbf8a;--main-d:#2f9e6f;--pro:#5aa5e6;}}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 system-ui,-apple-system,"Noto Sans TC","Microsoft JhengHei",sans-serif;padding-bottom:calc(72px + env(safe-area-inset-bottom))}
+#app{max-width:560px;margin:0 auto;padding:12px 16px}
+h1{font-size:20px;margin:6px 0 12px}
+h2{font-size:16px;margin:0 0 8px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:12px}
+.row{display:flex;align-items:center;gap:8px}
+.sp{flex:1}
+.sub{color:var(--sub);font-size:13px}
+.big{font-size:30px;font-weight:700;line-height:1.1}
+.bar{height:10px;background:var(--line);border-radius:6px;overflow:hidden;margin:6px 0}
+.bar i{display:block;height:100%;background:var(--main);border-radius:6px}
+.bar.pro i{background:var(--pro)}
+.bar.over i{background:var(--bad)}
+button,.btn{font:inherit;border:0;border-radius:12px;padding:11px 16px;background:var(--main);color:#fff;font-weight:600;cursor:pointer;display:inline-block;text-align:center;white-space:nowrap}
+button:active,.btn:active{background:var(--main-d)}
+button.sec,.btn.sec{background:transparent;color:var(--main);border:1.5px solid var(--main)}
+button.ghost{background:transparent;color:var(--sub);padding:6px 10px;font-weight:500}
+button.danger{background:var(--bad)}
+button:disabled{opacity:.5}
+.full{width:100%}
+input,select,textarea{font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:9px 10px;width:100%;min-width:0}
+label{display:block;font-size:13px;color:var(--sub);margin:10px 0 4px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+nav{position:fixed;left:0;right:0;bottom:0;background:var(--card);border-top:1px solid var(--line);display:flex;padding-bottom:env(safe-area-inset-bottom);z-index:5}
+nav button{flex:1;background:transparent;color:var(--sub);border-radius:0;padding:8px 2px;font-size:12px;font-weight:500}
+nav button b{display:block;font-size:20px;line-height:1.2}
+nav button.on{color:var(--main)}
+.meal{display:flex;gap:10px;align-items:center;padding:10px 0;border-top:1px solid var(--line)}
+.meal:first-of-type{border-top:0}
+.meal img,.meal .ph{width:54px;height:54px;border-radius:10px;object-fit:cover;background:var(--line);flex:none;display:flex;align-items:center;justify-content:center;font-size:22px}
+.meal .t{flex:1;min-width:0}
+.meal .t div{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.item{border:1px solid var(--line);border-radius:12px;padding:10px;margin-bottom:8px}
+.item .grid3{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:6px}
+.pill{display:inline-block;background:var(--bg);border:1px solid var(--line);border-radius:20px;padding:1px 10px;font-size:12px;color:var(--sub)}
+.err{background:#fdecec;color:#a12b2b;border-radius:10px;padding:10px;margin:8px 0;font-size:14px}
+.note{background:#fff6e8;color:#8a5a12;border-radius:10px;padding:10px;margin:8px 0;font-size:14px}
+@media (prefers-color-scheme:dark){.err{background:#3a1f1f;color:#f2b1b1}.note{background:#3a2f1c;color:#f0c98a}}
+.preview{width:100%;max-height:180px;object-fit:cover;border-radius:12px;margin-bottom:8px}
+ul.tips{margin:6px 0 0;padding-left:20px}ul.tips li{margin:4px 0}
+table{width:100%;border-collapse:collapse;font-size:14px}td,th{padding:6px 4px;border-top:1px solid var(--line);text-align:left}
+.spin{display:inline-block;width:16px;height:16px;border:2px solid #fff6;border-top-color:#fff;border-radius:50%;animation:s .8s linear infinite;vertical-align:-3px;margin-right:6px}
+@keyframes s{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<nav id="nav"></nav>
+<input type="file" id="fCam" accept="image/*" capture="environment" hidden>
+<input type="file" id="fGal" accept="image/*" hidden>
+<input type="file" id="fImp" accept="application/json,.json" hidden>
+<script>
+'use strict';
+/* ---------- 工具 ---------- */
+const $ = s => document.querySelector(s);
+const z2 = n => String(n).padStart(2, '0');
+const ymd = d => d.getFullYear() + '-' + z2(d.getMonth() + 1) + '-' + z2(d.getDate());
+const parseYmd = s => { const [y, m, d] = s.split('-').map(Number); return new Date(y, m - 1, d); };
+const addDays = (s, n) => { const d = parseYmd(s); d.setDate(d.getDate() + n); return ymd(d); };
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const num = v => { const n = parseFloat(v); return isFinite(n) ? n : 0; };
+const r0 = n => Math.round(n);
+const r1 = n => Math.round(n * 10) / 10;
+const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+const WD = ['日', '一', '二', '三', '四', '五', '六'];
+
+/* ---------- 資料 ---------- */
+const KEY = 'diet-app-v1';
+const today = () => ymd(new Date());
+function defaults() {
+  return {
+    profile: { height: 156, age: 38, sex: 'f', goalWeight: 45, activity: 1.375, deficit: 500, kcalOverride: '', proteinOverride: '' },
+    settings: { apiKey: '', model: 'claude-sonnet-5' },
+    weights: [{ d: today(), w: 65 }],
+    meals: []
+  };
+}
+function load() {
+  try {
+    const s = JSON.parse(localStorage.getItem(KEY));
+    if (s && s.profile) { const d = defaults(); return { ...d, ...s, profile: { ...d.profile, ...s.profile }, settings: { ...d.settings, ...s.settings } }; }
+  } catch (e) {}
+  return defaults();
+}
+let S = load();
+function save() {
+  const cut = addDays(today(), -21);
+  const tryStore = () => localStorage.setItem(KEY, JSON.stringify(S));
+  try { tryStore(); } catch (e) {
+    // 空間不足：先丟掉舊縮圖
+    S.meals.forEach(m => { if (m.d < cut) delete m.thumb; });
+    try { tryStore(); } catch (e2) { S.meals.forEach(m => delete m.thumb); try { tryStore(); } catch (e3) { alert('儲存空間不足，請先匯出備份'); } }
+  }
+}
+
+/* ---------- 計算 ---------- */
+function curWeight() {
+  const w = [...S.weights].sort((a, b) => a.d.localeCompare(b.d));
+  return w.length ? w[w.length - 1].w : 65;
+}
+function calc() {
+  const p = S.profile, w = curWeight();
+  const bmr = 10 * w + 6.25 * p.height - 5 * p.age + (p.sex === 'm' ? 5 : -161);
+  const tdee = bmr * p.activity;
+  let kcal = Math.max(1200, tdee - p.deficit);
+  if (p.sex === 'm') kcal = Math.max(1500, tdee - p.deficit);
+  let protein = w * 1.2;
+  if (num(p.kcalOverride) > 0) kcal = num(p.kcalOverride);
+  if (num(p.proteinOverride) > 0) protein = num(p.proteinOverride);
+  const h = p.height / 100;
+  return { bmr: r0(bmr), tdee: r0(tdee), kcal: r0(kcal / 10) * 10, protein: r0(protein), bmi: w / (h * h), w, goalBmi: p.goalWeight / (h * h), weightForBmi: b => b * h * h };
+}
+function dayMeals(d) { return S.meals.filter(m => m.d === d).sort((a, b) => (a.t || '').localeCompare(b.t || '')); }
+function sums(list) {
+  const t = { kcal: 0, protein: 0, carbs: 0, fat: 0 };
+  list.forEach(m => m.items.forEach(i => { t.kcal += num(i.kcal); t.protein += num(i.protein); t.carbs += num(i.carbs); t.fat += num(i.fat); }));
+  return t;
+}
+function guessType() { const h = new Date().getHours(); return h < 10 ? '早餐' : h < 14 ? '午餐' : h < 17 ? '點心' : h < 21 ? '晚餐' : '宵夜'; }
+
+/* ---------- 狀態 ---------- */
+let view = 'today', viewDate = today();
+let draft = null;        // 正在編輯的餐點
+let curImg = null;       // 目前這張照片（縮放後的 base64，不存檔）
+let busy = false, errMsg = '', noteMsg = '';
+
+/* ---------- 影像 ---------- */
+function loadImage(file) {
+  return new Promise((res, rej) => {
+    const url = URL.createObjectURL(file), im = new Image();
+    im.onload = () => { URL.revokeObjectURL(url); res(im); };
+    im.onerror = () => { URL.revokeObjectURL(url); rej(new Error('無法讀取這張照片')); };
+    im.src = url;
+  });
+}
+function shrink(im, max, q) {
+  const k = Math.min(1, max / Math.max(im.naturalWidth, im.naturalHeight));
+  const c = document.createElement('canvas');
+  c.width = Math.round(im.naturalWidth * k); c.height = Math.round(im.naturalHeight * k);
+  c.getContext('2d').drawImage(im, 0, 0, c.width, c.height);
+  return c.toDataURL('image/jpeg', q);
+}
+
+/* ---------- AI 辨識 ---------- */
+const PROMPT = `你是專業營養師助理。請辨識照片中的食物與飲料，估計每一項的份量與營養。
+- 以台灣常見的份量與烹調方式為基準（例：一碗白飯約200g、約280kcal；滷肉飯、便當、小吃、手搖飲都要考慮油、糖與醬汁）。
+- 每個項目的數值是「照片中那一份的總量」，不是每100g。
+- 看不清楚時，採用合理的中間值，並在 note 說明不確定之處。
+- 使用者若有補充說明（份量、吃了幾成、是否加糖…），以補充說明為準。
+- 只輸出 JSON，不要任何其他文字，格式：
+{"items":[{"name":"食物名稱","portion":"份量描述，如 1碗/約150g","kcal":整數,"protein":蛋白質克數(可一位小數),"carbs":碳水克數,"fat":脂肪克數}],"confidence":"高|中|低","note":"一句話說明估算依據或不確定處"}
+- 若照片中沒有食物，items 為空陣列。`;
+
+async function analyze(hint) {
+  if (!S.settings.apiKey) throw new Error('尚未設定 API 金鑰，請到「設定」貼上金鑰；或改用手動輸入。');
+  const content = [
+    { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: curImg.split(',')[1] } },
+    { type: 'text', text: PROMPT + (hint ? '\n\n使用者補充說明：' + hint : '') }
+  ];
+  let r;
+  try {
+    r = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-api-key': S.settings.apiKey.trim(),
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true'
+      },
+      body: JSON.stringify({ model: S.settings.model, max_tokens: 1200, messages: [{ role: 'user', content }] })
+    });
+  } catch (e) { throw new Error('連不上網路，請檢查網路後再試。'); }
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) {
+    const m = (data.error && data.error.message) || ('HTTP ' + r.status);
+    if (r.status === 401) throw new Error('API 金鑰無效，請到「設定」重新貼上。');
+    if (r.status === 429) throw new Error('請求太頻繁或額度用完：' + m);
+    throw new Error('辨識失敗：' + m);
+  }
+  const text = (data.content || []).filter(b => b.type === 'text').map(b => b.text).join('');
+  const m = text.match(/\{[\s\S]*\}/);
+  if (!m) throw new Error('無法解析 AI 回覆，請再試一次。');
+  let j; try { j = JSON.parse(m[0]); } catch (e) { throw new Error('無法解析 AI 回覆，請再試一次。'); }
+  return j;
+}
+
+/* ---------- 畫面 ---------- */
+function render() {
+  const nav = [['today', '📅', '今天'], ['add', '➕', '記錄'], ['weight', '⚖️', '體重'], ['plan', '🎯', '計畫'], ['settings', '⚙️', '設定']];
+  $('#nav').innerHTML = nav.map(([k, i, t]) => `<button data-act="nav" data-v="${k}" class="${view === k ? 'on' : ''}"><b>${i}</b>${t}</button>`).join('');
+  $('#app').innerHTML = { today: vToday, add: vAdd, weight: vWeight, plan: vPlan, settings: vSettings }[view]();
+  window.scrollTo(0, 0);
+}
+
+function vToday() {
+  const c = calc(), ms = dayMeals(viewDate), t = sums(ms);
+  const left = c.kcal - t.kcal, pk = Math.min(100, t.kcal / c.kcal * 100), pp = Math.min(100, t.protein / c.protein * 100);
+  const d = parseYmd(viewDate), isToday = viewDate === today();
+  return `
+  <div class="row"><button class="ghost" data-act="day" data-n="-1">‹</button>
+    <div class="sp" style="text-align:center"><h1 style="margin:0">${isToday ? '今天' : ''} ${d.getMonth() + 1}/${d.getDate()}（${WD[d.getDay()]}）</h1></div>
+    <button class="ghost" data-act="day" data-n="1" ${isToday ? 'disabled' : ''}>›</button></div>
+  <div class="card" style="margin-top:8px">
+    <div class="row"><div><div class="sub">熱量</div><div class="big">${r0(t.kcal)}<span class="sub"> / ${c.kcal} kcal</span></div></div>
+      <div class="sp"></div><div style="text-align:right"><div class="sub">${left >= 0 ? '還可以吃' : '超過'}</div><div class="big" style="font-size:22px;color:${left >= 0 ? 'var(--main)' : 'var(--bad)'}">${Math.abs(r0(left))}</div></div></div>
+    <div class="bar ${left < 0 ? 'over' : ''}"><i style="width:${pk}%"></i></div>
+    <div class="row" style="margin-top:10px"><div><div class="sub">蛋白質</div><div class="big" style="font-size:24px">${r0(t.protein)}<span class="sub"> / ${c.protein} g</span></div></div></div>
+    <div class="bar pro"><i style="width:${pp}%"></i></div>
+    <div class="sub">碳水 ${r0(t.carbs)} g ・ 脂肪 ${r0(t.fat)} g</div>
+  </div>
+  <div class="card"><h2>今日餐點</h2>
+    ${ms.length ? ms.map(mealRow).join('') : `<div class="sub" style="padding:8px 0">還沒有記錄。按下方「➕記錄」拍下你吃的東西。</div>`}
+  </div>
+  <button class="full" data-act="newmeal" data-d="${viewDate}">＋ 記錄一餐</button>`;
+}
+function mealRow(m) {
+  const s = sums([m]);
+  return `<div class="meal" data-act="editmeal" data-id="${m.id}">
+    ${m.thumb ? `<img src="${m.thumb}" alt="">` : `<div class="ph">🍽️</div>`}
+    <div class="t"><div><b>${esc(m.type)}</b> <span class="sub">${esc(m.t || '')}</span></div>
+      <div class="sub">${esc(m.items.map(i => i.name).join('、') || '（未命名）')}</div></div>
+    <div style="text-align:right"><div><b>${r0(s.kcal)}</b> <span class="sub">kcal</span></div><div class="sub">蛋白 ${r0(s.protein)} g</div></div></div>`;
+}
+
+function vAdd() {
+  if (!draft) {
+    return `<h1>記錄一餐</h1>
+    ${S.settings.apiKey ? '' : `<div class="note">還沒設定 AI 金鑰，拍照無法自動辨識。請先到「設定」貼上金鑰；或用「手動輸入」。</div>`}
+    <div class="card">
+      <button class="full" data-act="cam">📷 拍照</button>
+      <button class="full sec" style="margin-top:10px" data-act="gal">🖼️ 從相簿選照片</button>
+      <label>補充說明（選填，拍照前先寫，可讓估算更準）</label>
+      <input id="hint0" placeholder="例：飯只吃半碗、飲料無糖、雞腿去皮">
+    </div>
+    <button class="full sec" data-act="manual">✍️ 手動輸入（不用照片）</button>`;
+  }
+  const c = calc();
+  const tot = sums([draft]);
+  return `<h1>${draft.id && S.meals.some(m => m.id === draft.id) ? '編輯餐點' : '確認這一餐'}</h1>
+  ${draft.thumb ? `<img class="preview" src="${curImg || draft.thumb}" alt="">` : ''}
+  ${errMsg ? `<div class="err">${esc(errMsg)}</div>` : ''}
+  ${noteMsg ? `<div class="note">${noteMsg}</div>` : ''}
+  ${curImg ? `<div class="card"><label style="margin-top:0">補充說明後重新估算</label>
+      <div class="row"><input id="hint1" value="${esc(draft.hint || '')}" placeholder="例：飯是半碗、沒喝湯"><button data-act="reanalyze" ${busy ? 'disabled' : ''}>${busy ? '<span class="spin"></span>' : ''}重估</button></div></div>` : ''}
+  <div class="card"><h2>食物明細 <span class="sub">（數字可直接修改）</span></h2>
+    <div id="items">${draft.items.map(itemRow).join('')}</div>
+    <button class="sec full" data-act="additem">＋ 新增一項</button>
+    <div class="row" style="margin-top:12px"><b class="sp">合計</b><span id="tot"><b>${r0(tot.kcal)}</b> kcal ・ 蛋白 <b>${r1(tot.protein)}</b> g</span></div>
+    <div class="sub">這餐約佔今日目標的 ${r0(tot.kcal / c.kcal * 100)}%</div>
+  </div>
+  <div class="card"><div class="grid2">
+    <div><label style="margin-top:0">餐別</label><select data-f="type">${['早餐', '午餐', '晚餐', '點心', '宵夜'].map(x => `<option ${draft.type === x ? 'selected' : ''}>${x}</option>`).join('')}</select></div>
+    <div><label style="margin-top:0">時間</label><input type="time" data-f="t" value="${esc(draft.t)}"></div></div>
+    <label>日期</label><input type="date" data-f="d" value="${esc(draft.d)}" max="${today()}"></div>
+  <div class="row"><button class="full" data-act="savemeal">儲存</button></div>
+  <div class="row" style="margin-top:8px"><button class="ghost sp" data-act="cancel">取消</button>
+    ${S.meals.some(m => m.id === draft.id) ? `<button class="ghost" style="color:var(--bad)" data-act="delmeal">刪除這餐</button>` : ''}</div>`;
+}
+function itemRow(i, k) {
+  return `<div class="item" data-k="${k}">
+    <div class="row"><input data-i="${k}" data-f="name" value="${esc(i.name)}" placeholder="食物名稱"><button class="ghost" data-act="delitem" data-k="${k}">✕</button></div>
+    <input data-i="${k}" data-f="portion" value="${esc(i.portion)}" placeholder="份量（如 1碗、約150g）" style="margin-top:6px">
+    <div class="grid3">
+      <div><label style="margin:2px 0">熱量 kcal</label><input type="number" inputmode="decimal" data-i="${k}" data-f="kcal" value="${esc(i.kcal)}"></div>
+      <div><label style="margin:2px 0">蛋白質 g</label><input type="number" inputmode="decimal" data-i="${k}" data-f="protein" value="${esc(i.protein)}"></div>
+      <div><label style="margin:2px 0">碳水 g</label><input type="number" inputmode="decimal" data-i="${k}" data-f="carbs" value="${esc(i.carbs)}"></div>
+      <div><label style="margin:2px 0">脂肪 g</label><input type="number" inputmode="decimal" data-i="${k}" data-f="fat" value="${esc(i.fat)}"></div>
+    </div></div>`;
+}
+
+function vWeight() {
+  const ws = [...S.weights].sort((a, b) => a.d.localeCompare(b.d));
+  const c = calc(), start = ws[0].w, goal = S.profile.goalWeight;
+  const lost = start - c.w, pct = Math.max(0, Math.min(100, lost / (start - goal) * 100));
+  return `<h1>體重</h1>
+  <div class="card">
+    <div class="row"><div><div class="sub">目前</div><div class="big">${r1(c.w)}<span class="sub"> kg</span></div></div><div class="sp"></div>
+      <div style="text-align:right"><div class="sub">目標</div><div class="big" style="font-size:24px">${goal}<span class="sub"> kg</span></div></div></div>
+    <div class="bar"><i style="width:${pct}%"></i></div>
+    <div class="sub">已減 ${r1(lost)} kg，還差 ${r1(Math.max(0, c.w - goal))} kg（BMI ${r1(c.bmi)}）</div>
+  </div>
+  <div class="card"><h2>記錄今天的體重</h2>
+    <div class="row"><input id="wIn" type="number" step="0.1" inputmode="decimal" placeholder="例：64.5"><input id="wDate" type="date" value="${today()}" max="${today()}" style="max-width:150px"><button data-act="addw">記錄</button></div>
+    <div class="sub" style="margin-top:6px">建議每週固定一天、起床上完廁所後量，看「每週平均」而不是每天的起伏。</div></div>
+  ${ws.length >= 2 ? `<div class="card"><h2>走勢</h2>${chart(ws, goal)}</div>` : ''}
+  <div class="card"><h2>紀錄</h2><table>${[...ws].reverse().map(w => `<tr><td>${w.d}</td><td><b>${r1(w.w)}</b> kg</td><td style="text-align:right"><button class="ghost" data-act="delw" data-d="${w.d}">刪除</button></td></tr>`).join('')}</table></div>`;
+}
+function chart(ws, goal) {
+  const W = 320, H = 150, P = 26;
+  const t0 = parseYmd(ws[0].d).getTime(), t1 = Math.max(parseYmd(ws[ws.length - 1].d).getTime(), t0 + 86400000 * 6);
+  const vals = ws.map(w => w.w).concat([goal]);
+  const lo = Math.floor(Math.min(...vals) - 1), hi = Math.ceil(Math.max(...vals) + 1);
+  const X = d => P + (parseYmd(d).getTime() - t0) / (t1 - t0) * (W - P - 8), Y = v => 8 + (hi - v) / (hi - lo) * (H - 8 - 20);
+  const pts = ws.map(w => `${X(w.d).toFixed(1)},${Y(w.w).toFixed(1)}`).join(' ');
+  return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto">
+    <line x1="${P}" x2="${W - 8}" y1="${Y(goal)}" y2="${Y(goal)}" stroke="var(--warn)" stroke-dasharray="4 3"/>
+    <text x="${P + 2}" y="${Y(goal) - 3}" font-size="9" fill="var(--warn)">目標 ${goal}</text>
+    <text x="0" y="${Y(hi) + 8}" font-size="9" fill="var(--sub)">${hi}</text><text x="0" y="${Y(lo)}" font-size="9" fill="var(--sub)">${lo}</text>
+    <polyline points="${pts}" fill="none" stroke="var(--main)" stroke-width="2.5" stroke-linejoin="round"/>
+    ${ws.map(w => `<circle cx="${X(w.d).toFixed(1)}" cy="${Y(w.w).toFixed(1)}" r="3" fill="var(--main)"/>`).join('')}
+    <text x="${P}" y="${H - 4}" font-size="9" fill="var(--sub)">${ws[0].d.slice(5)}</text><text x="${W - 8}" y="${H - 4}" font-size="9" text-anchor="end" fill="var(--sub)">${ws[ws.length - 1].d.slice(5)}</text></svg>`;
+}
+
+function vPlan() {
+  const c = calc(), p = S.profile, w = c.w, goal = p.goalWeight;
+  const okLow = c.weightForBmi(18.5), okHigh = c.weightForBmi(24);
+  const mid = r0(c.weightForBmi(20.5));
+  const steps = [];
+  for (let x = Math.floor((w - 1) / 5) * 5; x > goal; x -= 5) steps.push(x);
+  steps.push(goal);
+  const pace = 0.5;
+  const rows = steps.map(x => { const wk = Math.max(0, Math.ceil((w - x) / pace)); return `<tr><td><b>${x} kg</b></td><td>BMI ${r1(x / ((p.height / 100) ** 2))}</td><td>約 ${wk} 週後（${addDays(today(), wk * 7).slice(0, 7)}）</td></tr>`; }).join('');
+  const goalWarn = goal <= okLow + 0.3;
+  return `<h1>我的計畫</h1>
+  <div class="card"><h2>每日目標</h2>
+    <div class="grid2"><div><div class="sub">熱量</div><div class="big">${c.kcal}<span class="sub"> kcal</span></div></div><div><div class="sub">蛋白質</div><div class="big">${c.protein}<span class="sub"> g</span></div></div></div>
+    <div class="sub" style="margin-top:8px">基礎代謝約 ${c.bmr} kcal，含活動每天約消耗 ${c.tdee} kcal，每天少吃 ${p.deficit} kcal ≈ 每週減 ${r1(p.deficit * 7 / 7700)} kg。可在「設定」調整。</div>
+  </div>
+  ${goalWarn ? `<div class="note"><b>關於 ${goal} kg 這個目標：</b>${p.height} cm 的健康體重範圍約 ${r0(okLow)}–${r0(okHigh)} kg，${goal} kg（BMI ${r1(c.goalBmi)}）已經在正常範圍的最下緣。建議先以 <b>${mid} kg（BMI 20.5）</b> 左右為第一個目標，到了之後再看體態、體力、月經是否正常，決定要不要繼續往下。</div>` : ''}
+  <div class="card"><h2>階段里程碑（每週約減 0.5 kg）</h2><table>${rows}</table>
+    <div class="sub" style="margin-top:6px">實際進度會有起伏，停滯 2–3 週很正常。每減 5 kg 重新計算一次目標熱量（設定會自動依最新體重更新）。</div></div>
+  <div class="card"><h2>減重建議</h2><ul class="tips">
+    <li><b>速度求穩：</b>每週減 0.3–0.7 kg 就好。熱量不要低於 1200 kcal，吃太少會掉肌肉、掉髮、月經失調，之後更容易復胖。</li>
+    <li><b>蛋白質要吃夠：</b>每天約 ${c.protein} g，平均分在三餐（每餐 20–25 g）。一個手掌大的雞胸/魚/豆腐約 20–25 g；一顆蛋 6 g；一杯無糖豆漿 7 g。</li>
+    <li><b>保住肌肉：</b>每週 2–3 次阻力訓練（深蹲、彈力帶、啞鈴），加上每天走 6000–8000 步。只靠節食，掉的有一部分是肌肉，代謝會變慢。</li>
+    <li><b>先改最有效的：</b>含糖飲料、油炸、宵夜、酒精。這些通常比「少吃一口飯」更有感。</li>
+    <li><b>盤子法則：</b>每餐半盤蔬菜、四分之一蛋白質、四分之一主食（優先糙米/地瓜/燕麥等原型澱粉）。</li>
+    <li><b>睡眠與水：</b>睡 7 小時以上；睡不夠食慾激素會亂。每天喝水約 ${r0(w * 30)} ml。</li>
+    <li><b>38 歲的提醒：</b>注意鐵、鈣、維生素 D 與纖維；若有慢性病、正在服藥、月經異常或想懷孕，請先請醫師/營養師評估。</li>
+    <li><b>有彈性：</b>一週抓 5–6 天達標即可，聚餐那餐不用內疚，下一餐回到計畫。</li>
+  </ul></div>
+  <div class="card"><h2>照片估算準不準？</h2><ul class="tips">
+    <li>AI 看照片估熱量，誤差通常在 ±20–30%，<b>看不見的油、糖、醬汁</b>最容易低估（例如手搖飲、滷肉飯、炒菜）。</li>
+    <li>拍照時盡量<b>從正上方、整份入鏡</b>，旁邊放筷子或湯匙當比例尺。</li>
+    <li>有不確定的地方，用「補充說明」告訴它（例：全糖、飯半碗、去皮），再按「重估」。</li>
+    <li>每週看趨勢就好，不用追求每餐精準；體重沒動就把每天目標再降 100 kcal 或多走 2000 步。</li>
+  </ul></div>`;
+}
+
+function vSettings() {
+  const p = S.profile, s = S.settings, c = calc();
+  const fld = (label, key, extra = '') => `<div><label>${label}</label><input type="number" inputmode="decimal" data-p="${key}" value="${esc(p[key])}" ${extra}></div>`;
+  return `<h1>設定</h1>
+  <div class="card"><h2>個人資料</h2>
+    <div class="grid2">${fld('身高 cm', 'height')}${fld('年齡', 'age')}${fld('目標體重 kg', 'goalWeight', 'step="0.1"')}
+    <div><label>性別</label><select data-p="sex"><option value="f" ${p.sex === 'f' ? 'selected' : ''}>女</option><option value="m" ${p.sex === 'm' ? 'selected' : ''}>男</option></select></div></div>
+    <label>日常活動量</label><select data-p="activity">${[[1.2, '幾乎不運動（久坐上班）'], [1.375, '輕度（每週運動 1–3 次）'], [1.55, '中度（每週運動 3–5 次）'], [1.725, '高度（每週運動 6–7 次）']].map(([v, t]) => `<option value="${v}" ${p.activity == v ? 'selected' : ''}>${t}</option>`).join('')}</select>
+    <label>每天熱量赤字</label><select data-p="deficit">${[300, 400, 500, 600].map(v => `<option value="${v}" ${p.deficit == v ? 'selected' : ''}>少吃 ${v} kcal${v === 500 ? '（建議）' : ''}</option>`).join('')}</select>
+    <div class="grid2"><div><label>自訂熱量目標（留空＝自動 ${c.kcal}）</label><input type="number" data-p="kcalOverride" value="${esc(p.kcalOverride)}"></div>
+    <div><label>自訂蛋白質（留空＝自動 ${c.protein}）</label><input type="number" data-p="proteinOverride" value="${esc(p.proteinOverride)}"></div></div>
+  </div>
+  <div class="card"><h2>AI 辨識設定</h2>
+    <label>Anthropic API 金鑰</label><input type="password" id="apikey" value="${esc(s.apiKey)}" placeholder="sk-ant-..." autocomplete="off">
+    <label>模型</label><select id="model">${[['claude-sonnet-5', 'Sonnet 5（準，建議）'], ['claude-haiku-4-5-20251001', 'Haiku 4.5（便宜、快）'], ['claude-opus-5', 'Opus 5（最準、最貴）']].map(([v, t]) => `<option value="${v}" ${s.model === v ? 'selected' : ''}>${t}</option>`).join('')}</select>
+    <div class="sub" style="margin-top:8px">金鑰只存在這支手機的瀏覽器裡，不會上傳到別處；拍的照片只會在你按辨識時，直接傳給 Anthropic 分析。到 console.anthropic.com 建立金鑰並儲值，一張照片的費用約幾毛錢到一兩塊台幣。</div>
+    <button class="full" style="margin-top:10px" data-act="savekey">儲存金鑰與模型</button>
+  </div>
+  <div class="card"><h2>資料備份</h2>
+    <div class="sub" style="margin-bottom:8px">資料只存在這支手機的瀏覽器裡（清除瀏覽資料會消失），建議定期匯出備份。</div>
+    <div class="row"><button class="sec sp" data-act="export">匯出備份</button><button class="sec sp" data-act="import">匯入備份</button></div>
+    <button class="ghost full" style="color:var(--bad);margin-top:8px" data-act="wipe">清除所有資料</button></div>`;
+}
+
+/* ---------- 事件 ---------- */
+function goto(v) { view = v; errMsg = ''; noteMsg = ''; if (v !== 'add') { draft = null; curImg = null; } render(); }
+function newDraft(d) { return { id: uid(), d: d || today(), t: z2(new Date().getHours()) + ':' + z2(new Date().getMinutes()), type: guessType(), items: [], thumb: '', hint: '' }; }
+const blankItem = () => ({ name: '', portion: '', kcal: '', protein: '', carbs: '', fat: '' });
+
+async function handlePhoto(file, hint) {
+  if (!file) return;
+  errMsg = ''; noteMsg = '';
+  try {
+    const im = await loadImage(file);
+    curImg = shrink(im, 1024, 0.8);
+    draft = newDraft(viewDate);
+    draft.thumb = shrink(im, 140, 0.6); draft.hint = hint || '';
+    view = 'add'; busy = true; draft.items = []; render();
+    await runAnalyze();
+  } catch (e) { errMsg = e.message; busy = false; if (!draft) draft = newDraft(); view = 'add'; render(); }
+}
+async function runAnalyze() {
+  busy = true; errMsg = ''; noteMsg = ''; renderBusy();
+  try {
+    const j = await analyze(draft.hint);
+    draft.items = (j.items || []).map(i => ({ name: i.name || '', portion: i.portion || '', kcal: r0(num(i.kcal)), protein: r1(num(i.protein)), carbs: r1(num(i.carbs)), fat: r1(num(i.fat)) }));
+    const bits = [];
+    if (!draft.items.length) bits.push('照片裡沒有辨識到食物，可以手動新增。');
+    if (j.confidence) bits.push('把握度：' + esc(j.confidence));
+    if (j.note) bits.push(esc(j.note));
+    if (bits.length) noteMsg = bits.join('　');
+  } catch (e) { errMsg = e.message; if (!draft.items.length) draft.items = [blankItem()]; }
+  busy = false; render();
+}
+function renderBusy() {
+  // 辨識中：顯示等待畫面（保留照片）
+  $('#app').innerHTML = `<h1>辨識中…</h1>${draft.thumb ? `<img class="preview" src="${curImg || draft.thumb}" alt="">` : ''}<div class="card" style="text-align:center"><span class="spin" style="border-color:#2f9e6f55;border-top-color:var(--main)"></span> AI 正在看你吃了什麼，約 5–15 秒</div>`;
+}
+
+document.addEventListener('click', async e => {
+  const el = e.target.closest('[data-act]'); if (!el) return;
+  const a = el.dataset.act;
+  if (a === 'nav') return goto(el.dataset.v);
+  if (a === 'day') { viewDate = addDays(viewDate, +el.dataset.n); if (viewDate > today()) viewDate = today(); return render(); }
+  if (a === 'newmeal') { draft = null; curImg = null; view = 'add'; return render(); }
+  if (a === 'cam') { window._hint = ($('#hint0') || {}).value || ''; return $('#fCam').click(); }
+  if (a === 'gal') { window._hint = ($('#hint0') || {}).value || ''; return $('#fGal').click(); }
+  if (a === 'manual') { draft = newDraft(viewDate); draft.items = [blankItem()]; curImg = null; return render(); }
+  if (a === 'editmeal') { const m = S.meals.find(x => x.id === el.dataset.id); if (!m) return; draft = JSON.parse(JSON.stringify(m)); curImg = null; view = 'add'; return render(); }
+  if (a === 'additem') { draft.items.push(blankItem()); return render(); }
+  if (a === 'delitem') { draft.items.splice(+el.dataset.k, 1); return render(); }
+  if (a === 'cancel') return goto('today');
+  if (a === 'reanalyze') { draft.hint = $('#hint1').value.trim(); return runAnalyze(); }
+  if (a === 'savemeal') {
+    draft.items = draft.items.filter(i => i.name.trim() || num(i.kcal) || num(i.protein));
+    if (!draft.items.length) { errMsg = '至少要有一項食物才能儲存。'; draft.items.push(blankItem()); return render(); }
+    draft.items.forEach(i => { i.name = i.name.trim() || '食物'; ['kcal', 'protein', 'carbs', 'fat'].forEach(k => i[k] = num(i[k])); });
+    const idx = S.meals.findIndex(m => m.id === draft.id);
+    const rec = { ...draft }; delete rec.hint;
+    if (idx >= 0) S.meals[idx] = rec; else S.meals.push(rec);
+    save(); viewDate = draft.d; draft = null; curImg = null; view = 'today'; return render();
+  }
+  if (a === 'delmeal') { if (!confirm('確定刪除這餐？')) return; S.meals = S.meals.filter(m => m.id !== draft.id); save(); draft = null; view = 'today'; return render(); }
+  if (a === 'addw') {
+    const w = num($('#wIn').value), d = $('#wDate').value || today();
+    if (w < 20 || w > 300) return alert('請輸入正確的體重');
+    S.weights = S.weights.filter(x => x.d !== d); S.weights.push({ d, w }); save(); return render();
+  }
+  if (a === 'delw') { if (S.weights.length <= 1) return alert('至少要保留一筆體重紀錄'); S.weights = S.weights.filter(x => x.d !== el.dataset.d); save(); return render(); }
+  if (a === 'savekey') { S.settings.apiKey = $('#apikey').value.trim(); S.settings.model = $('#model').value; save(); el.textContent = '已儲存 ✓'; return setTimeout(() => el.textContent = '儲存金鑰與模型', 1500); }
+  if (a === 'export') {
+    const blob = new Blob([JSON.stringify(S)], { type: 'application/json' }), u = URL.createObjectURL(blob), l = document.createElement('a');
+    l.href = u; l.download = 'diet-backup-' + today() + '.json'; l.click(); return setTimeout(() => URL.revokeObjectURL(u), 2000);
+  }
+  if (a === 'import') return $('#fImp').click();
+  if (a === 'wipe') { if (confirm('會刪除所有餐點、體重與設定（含金鑰），確定？') && confirm('再確認一次：真的要全部清除？')) { localStorage.removeItem(KEY); S = load(); view = 'today'; render(); } }
+});
+document.addEventListener('input', e => {
+  const t = e.target;
+  if (t.dataset.i !== undefined && draft) {
+    draft.items[+t.dataset.i][t.dataset.f] = t.type === 'number' ? t.value : t.value;
+    const tot = sums([{ items: draft.items }]), c = calc();
+    $('#tot').innerHTML = `<b>${r0(tot.kcal)}</b> kcal ・ 蛋白 <b>${r1(tot.protein)}</b> g`;
+  } else if (t.dataset.p) {
+    const k = t.dataset.p; S.profile[k] = (k === 'sex' || k === 'kcalOverride' || k === 'proteinOverride') ? t.value : num(t.value); save();
+  } else if (t.dataset.f && draft) { draft[t.dataset.f] = t.value; }
+});
+document.addEventListener('change', e => { if (e.target.dataset.p) { const y = window.scrollY; render(); window.scrollTo(0, y); } });
+$('#fCam').addEventListener('change', e => { const f = e.target.files[0]; e.target.value = ''; handlePhoto(f, window._hint); });
+$('#fGal').addEventListener('change', e => { const f = e.target.files[0]; e.target.value = ''; handlePhoto(f, window._hint); });
+$('#fImp').addEventListener('change', async e => {
+  const f = e.target.files[0]; e.target.value = ''; if (!f) return;
+  try { const j = JSON.parse(await f.text()); if (!j.profile || !j.meals || !j.weights) throw 0; if (!confirm('匯入會覆蓋目前的資料，確定？')) return; S = { ...defaults(), ...j }; save(); view = 'today'; render(); }
+  catch (x) { alert('這不是有效的備份檔'); }
+});
+if ('serviceWorker' in navigator && location.protocol.startsWith('http')) navigator.serviceWorker.register('sw.js').catch(() => {});
+render();
+</script>
+</body>
+</html>
