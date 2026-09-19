@@ -196,30 +196,39 @@ async function callClaude(hint) {
   return (data.content || []).filter(b => b.type === 'text').map(b => b.text).join('');
 }
 
+let usedModel = '';
 async function callGemini(hint) {
-  const body = {
+  const body = JSON.stringify({
     contents: [{ parts: [{ text: buildText(hint) }].concat(curImg ? [{ inline_data: { mime_type: 'image/jpeg', data: curImg.split(',')[1] } }] : []) }],
     generationConfig: { response_mime_type: 'application/json', maxOutputTokens: 4000 }
-  };
-  let r;
-  try {
-    r = await fetch('https://generativelanguage.googleapis.com/v1beta/models/' + encodeURIComponent(S.settings.geminiModel) + ':generateContent', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', 'x-goog-api-key': S.settings.geminiKey.trim() },
-      body: JSON.stringify(body)
-    });
-  } catch (e) { throw new Error('連不上網路，請檢查網路後再試。'); }
-  const data = await r.json().catch(() => ({}));
-  if (!r.ok) {
-    const m = (data.error && data.error.message) || ('HTTP ' + r.status);
-    if (r.status === 429) throw new Error('免費額度用完或太頻繁，稍後再試：' + m);
-    if (r.status === 400 && /api key/i.test(m)) throw new Error('Gemini 金鑰無效，請到「設定」重新貼上。');
-    if (r.status === 403) throw new Error('金鑰沒有權限或此模型不開放：' + m);
-    throw new Error('辨識失敗：' + m);
+  });
+  const models = [S.settings.geminiModel, 'gemini-2.5-flash', 'gemini-2.5-flash-lite'].filter((m, i, arr) => arr.indexOf(m) === i);
+  const sleep = ms => new Promise(r => setTimeout(r, ms));
+  const errList = [];
+  for (let mi = 0; mi < models.length; mi++) {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      let r;
+      try {
+        r = await fetch('https://generativelanguage.googleapis.com/v1beta/models/' + encodeURIComponent(models[mi]) + ':generateContent', {
+          method: 'POST', headers: { 'content-type': 'application/json', 'x-goog-api-key': S.settings.geminiKey.trim() }, body
+        });
+      } catch (e) { throw new Error('連不上網路，請檢查網路後再試。'); }
+      const data = await r.json().catch(() => ({}));
+      if (r.ok) {
+        const cand = (data.candidates || [])[0];
+        if (!cand) { errList.push(models[mi] + '：沒有回覆' + (data.promptFeedback && data.promptFeedback.blockReason ? '（' + data.promptFeedback.blockReason + '）' : '')); break; }
+        usedModel = models[mi];
+        return ((cand.content && cand.content.parts) || []).filter(p => p.text && !p.thought).map(p => p.text).join('');
+      }
+      const m = (data.error && data.error.message) || '';
+      if (r.status === 400 && /api key/i.test(m)) throw new Error('Gemini 金鑰無效，請到「設定」重新貼上。');
+      if (r.status === 403) throw new Error('金鑰沒有權限或此模型不開放（HTTP 403）：' + m);
+      if (attempt === 1 || r.status !== 503) errList.push(models[mi] + '：HTTP ' + r.status + ' ' + m);
+      if (r.status === 503 && attempt === 0) { await sleep(2000); continue; }   // 忙碌：同一模型再試一次
+      break;                                                                       // 其他錯誤：換下一個模型
+    }
   }
-  const cand = (data.candidates || [])[0];
-  if (!cand) throw new Error('Gemini 沒有回覆' + (data.promptFeedback && data.promptFeedback.blockReason ? '（' + data.promptFeedback.blockReason + '）' : '') + '，請換張照片或再試一次。');
-  return ((cand.content && cand.content.parts) || []).filter(p => p.text && !p.thought).map(p => p.text).join('');
+  throw new Error('辨識失敗（已自動重試並換備用模型）。' + errList.join('；').slice(0, 300));
 }
 
 async function analyze(hint) {
@@ -227,8 +236,9 @@ async function analyze(hint) {
   if (!curImg && !(hint || '').trim()) throw new Error('沒有照片時，請先在上方寫下你吃了什麼（例：滷肉飯一碗、滷蛋一顆、燙青菜），再按「估算」。');
   const text = S.settings.provider === 'gemini' ? await callGemini(hint) : await callClaude(hint);
   const m = text.match(/\{[\s\S]*\}/);
-  if (!m) throw new Error('無法解析 AI 回覆，請再試一次。');
-  let j; try { j = JSON.parse(m[0]); } catch (e) { throw new Error('無法解析 AI 回覆，請再試一次。'); }
+  const bad = () => new Error('無法解析 AI 回覆，請再試一次。AI 回覆內容：' + (text || '（空白）').slice(0, 120));
+  if (!m) throw bad();
+  let j; try { j = JSON.parse(m[0]); } catch (e) { throw bad(); }
   return j;
 }
 
@@ -446,6 +456,7 @@ async function runAnalyze() {
     if (!draft.items.length) bits.push('照片裡沒有辨識到食物，可以手動新增。');
     if (j.confidence) bits.push('把握度：' + esc(j.confidence));
     if (j.note) bits.push(esc(j.note));
+    if (S.settings.provider === 'gemini' && usedModel && usedModel !== S.settings.geminiModel) bits.push('（原本的模型忙碌，這次改用 ' + esc(usedModel) + '）');
     if (bits.length) noteMsg = bits.join('　');
   } catch (e) { errMsg = e.message; if (!draft.items.length) draft.items = [blankItem()]; }
   busy = false; render();
